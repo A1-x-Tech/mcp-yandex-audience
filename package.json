@@ -1,0 +1,23 @@
+{
+  "name": "mcp-yandex-audience",
+  "version": "0.0.1",
+  "description": "MCP-сервер для Яндекс Аудиторий (audience.yandex.ru) — сегменты, пиксели и похожие аудитории. Для Claude, Cursor, Codex и других AI-клиентов.",
+  "keywords": ["mcp", "model-context-protocol", "yandex", "yandex-audience", "advertising", "claude", "cursor", "codex"],
+  "homepage": "https://github.com/A1-x-Tech/mcp-yandex-audience#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/A1-x-Tech/mcp-yandex-audience.git"
+  },
+  "license": "MIT",
+  "author": "gistrec <gistrec@gmail.com>",
+  "type": "module",
+  "bin": {
+    "mcp-yandex-audience": "index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
