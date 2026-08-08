@@ -92,7 +92,7 @@ Release; the registry is immutable per version, so even a metadata-only change n
 
 1. Bump `version` in **three places, identically**: `package.json`, and in `server.json`
    **both** the root `version` **and** `packages[0].version`. `mcpName` in `package.json` must
-   match `name` in `server.json` (`io.github.a1-x-tech/mcp-yandex-audience`). Verify before
+   match `name` in `server.json` (`io.github.A1-x-Tech/mcp-yandex-audience`). Verify before
    publishing — all three must print the same X.Y.Z:
    `grep -n '"version"' package.json server.json`.
    > ⚠️ `mcp-publisher` publishes the **root** `server.json.version`. If you bump npm +

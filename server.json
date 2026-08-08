@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.a1-x-tech/mcp-yandex-audience",
+  "name": "io.github.A1-x-Tech/mcp-yandex-audience",
   "title": "Yandex Audience MCP",
   "description": "MCP server for Yandex Audience API: segments (CRM, lookalike, pixel), pixels, grants.",
   "websiteUrl": "https://github.com/A1-x-Tech/mcp-yandex-audience#readme",
