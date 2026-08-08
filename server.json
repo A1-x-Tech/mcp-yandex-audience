@@ -1,0 +1,49 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.a1-x-tech/mcp-yandex-audience",
+  "title": "Yandex Audience MCP",
+  "description": "MCP server for Yandex Audience API: segments (CRM, lookalike, pixel), pixels, grants.",
+  "websiteUrl": "https://github.com/A1-x-Tech/mcp-yandex-audience#readme",
+  "repository": {
+    "url": "https://github.com/A1-x-Tech/mcp-yandex-audience",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "mcp-yandex-audience",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "YANDEX_AUDIENCE_TOKEN",
+          "description": "Yandex OAuth token, sent as `Authorization: OAuth …`. Treat it as a secret.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "YANDEX_AUDIENCE_API_HOST",
+          "description": "API host override (https://api-audience.yandex.com for international accounts).",
+          "isRequired": false,
+          "default": "https://api-audience.yandex.ru"
+        },
+        {
+          "name": "YANDEX_AUDIENCE_TIMEOUT_MS",
+          "description": "Per-request timeout in milliseconds.",
+          "isRequired": false,
+          "default": "60000"
+        },
+        {
+          "name": "YANDEX_AUDIENCE_MAX_RETRIES",
+          "description": "Retries on 429 (5xx/network retried for GET only).",
+          "isRequired": false,
+          "default": "3"
+        }
+      ]
+    }
+  ]
+}
