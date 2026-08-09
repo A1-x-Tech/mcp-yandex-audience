@@ -4,7 +4,7 @@
 [![CI](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml/badge.svg)](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-<img src="./assets/a1-logo-warm.svg" alt="A1" width="22">&nbsp;**Yandex Audience MCP** — MCP-сервер, с которым Claude, Cursor, Codex и другие AI-клиенты управляют сегментами, пикселями и доступами в [Яндекс Аудиториях](https://audience.yandex.ru) по обычной команде. Он уже знает двухфазную загрузку файлов, схемы API и границу между подготовкой данных и созданием рабочего сегмента.
+<img src="./assets/a1-logo.svg" alt="A1" width="22">&nbsp;**Яндекс Аудитории MCP** — MCP-сервер, с которым Claude, Cursor, Codex и другие AI-клиенты управляют сегментами, пикселями и доступами в [Яндекс Аудиториях](https://audience.yandex.ru) по обычной команде. Он уже знает двухфазную загрузку файлов, схемы API и границу между подготовкой данных и созданием рабочего сегмента.
 
 - **16 готовых инструментов.** 8 для сегментов, 4 для пикселей, 3 для доступов и универсальный `raw_request`.
 - **CRM-файлы и идентификаторы.** Сервер загружает CSV с email и телефонами, а также TSV/TXT с device ID, MAC-адресами или SHA256-хешами.
