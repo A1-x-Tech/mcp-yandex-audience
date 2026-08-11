@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-08-11
+
+### Изменено
+
+- Объявлен стабильным. Набор инструментов, схемы входных данных и переменные окружения версии
+  0.1.x переносятся без изменений — релиз фиксирует стабильность API, а не новое поведение.
+
 ## [0.1.1] — 2026-08-09
 
 ### Fixed
@@ -35,5 +42,6 @@
 - Тесты: node:test без сети (клиент, тулы, конфиг, телеметрия, аннотации) +
   dist-smoke с реальным MCP-хендшейком по stdio против собранного `dist/`.
 
-[Unreleased]: https://github.com/A1-x-Tech/mcp-yandex-audience/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/A1-x-Tech/mcp-yandex-audience/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.0.0
 [0.1.0]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v0.1.0
