@@ -79,7 +79,7 @@ test("dist registers the expected tools", () => {
   assert.deepEqual(names.sort(), ALL_TOOLS);
 });
 
-test("dist server completes a real MCP handshake over stdio and lists every tool", async () => {
+test("dist server completes a real MCP handshake over stdio, lists every tool and hands over instructions", async () => {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
 
@@ -97,6 +97,13 @@ test("dist server completes a real MCP handshake over stdio and lists every tool
   try {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), ALL_TOOLS);
+
+    // The instructions live in the initialize result, so only a live handshake
+    // proves they survived the build. Length floor, not a wording match: it
+    // catches an empty or placeholder string without pinning the test to prose.
+    const instructions = client.getInstructions();
+    assert.equal(typeof instructions, "string");
+    assert.ok(instructions.trim().length > 200, "instructions must carry real guidance");
   } finally {
     await client.close();
   }

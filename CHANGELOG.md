@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-08-12
+
+### Добавлено
+
+- Инструкции сервера. В ответе MCP `initialize` теперь едет короткая справка для вызывающей
+  модели: чем этот API является и чем не является, чего он не умеет, а также квоты, правила
+  повторов и обманчивые ошибки, влияющие на то, как им пользоваться. Раньше это знание жило
+  только в README, который модель не читает.
+
 ## [1.0.0] — 2026-08-11
 
 ### Изменено
@@ -42,6 +51,7 @@
 - Тесты: node:test без сети (клиент, тулы, конфиг, телеметрия, аннотации) +
   dist-smoke с реальным MCP-хендшейком по stdio против собранного `dist/`.
 
-[Unreleased]: https://github.com/A1-x-Tech/mcp-yandex-audience/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/A1-x-Tech/mcp-yandex-audience/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.0.1
 [1.0.0]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.0.0
 [0.1.0]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v0.1.0

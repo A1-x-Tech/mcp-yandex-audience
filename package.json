@@ -1,6 +1,6 @@
 {
   "name": "mcp-yandex-audience",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for the Yandex Audience API — audience segments (CRM uploads, lookalike, pixel-based), tracking pixels and access grants for AI agents.",
   "mcpName": "io.github.A1-x-Tech/mcp-yandex-audience",
   "type": "module",
