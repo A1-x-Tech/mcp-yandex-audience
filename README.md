@@ -2,6 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/mcp-yandex-audience)](https://www.npmjs.com/package/mcp-yandex-audience)
 [![CI](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml/badge.svg)](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml)
+[![Glama](https://glama.ai/mcp/servers/A1-x-Tech/mcp-yandex-audience/badges/score.svg)](https://glama.ai/mcp/servers/A1-x-Tech/mcp-yandex-audience)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 <img src="./assets/a1-logo.svg" alt="A1" width="22">&nbsp;**Яндекс Аудитории MCP** — MCP-сервер, с которым Claude, Cursor, Codex и другие AI-клиенты управляют сегментами, пикселями и доступами в [Яндекс Аудиториях](https://audience.yandex.ru) по обычной команде. Он уже знает двухфазную загрузку файлов, схемы API и границу между подготовкой данных и созданием рабочего сегмента.
