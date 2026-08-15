@@ -1,11 +1,11 @@
-# Превратите клиентские данные в готовый рекламный сегмент обычной командой
+# <img src="./assets/a1-logo.svg" alt="A1" width="40"> Яндекс Аудитории MCP — превращайте клиентские данные в рекламные сегменты
 
 [![npm](https://img.shields.io/npm/v/mcp-yandex-audience)](https://www.npmjs.com/package/mcp-yandex-audience)
 [![CI](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml/badge.svg)](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml)
 [![Glama](https://glama.ai/mcp/servers/A1-x-Tech/mcp-yandex-audience/badges/score.svg)](https://glama.ai/mcp/servers/A1-x-Tech/mcp-yandex-audience)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-<img src="./assets/a1-logo.svg" alt="A1" width="22">&nbsp;**Яндекс Аудитории MCP** — MCP-сервер, с которым Claude, Cursor, Codex и другие AI-клиенты управляют сегментами, пикселями и доступами в [Яндекс Аудиториях](https://audience.yandex.ru) по обычной команде. Он уже знает двухфазную загрузку файлов, схемы API и границу между подготовкой данных и созданием рабочего сегмента.
+**Яндекс Аудитории MCP** — MCP-сервер, с которым Claude, Cursor, Codex и другие AI-клиенты управляют сегментами, пикселями и доступами в [Яндекс Аудиториях](https://audience.yandex.ru) по обычной команде. Он уже знает двухфазную загрузку файлов, схемы API и границу между подготовкой данных и созданием рабочего сегмента.
 
 - **16 готовых инструментов.** 8 для сегментов, 4 для пикселей, 3 для доступов и универсальный `raw_request`.
 - **CRM-файлы и идентификаторы.** Сервер загружает CSV с email и телефонами, а также TSV/TXT с device ID, MAC-адресами или SHA256-хешами.
@@ -178,10 +178,21 @@ codex mcp add yandex-audience \
 <br>
 
 ```bash
-claude mcp add yandex-audience \
-  -e YANDEX_AUDIENCE_TOKEN=ваш_токен \
+claude mcp add \
+  --env YANDEX_AUDIENCE_TOKEN=ваш_токен \
+  --transport stdio \
+  --scope user \
+  yandex-audience \
   -- npx -y mcp-yandex-audience@latest
 ```
+
+Проверьте подключение:
+
+```bash
+claude mcp list
+```
+
+[Официальная инструкция Claude Code](https://code.claude.com/docs/en/mcp)
 
 </details>
 
@@ -190,7 +201,9 @@ claude mcp add yandex-audience \
 
 <br>
 
-Откройте `claude_desktop_config.json`: на macOS он находится в `~/Library/Application Support/Claude/`, на Windows — в `%APPDATA%\Claude\`.
+1. Откройте Claude Desktop и перейдите в **Settings → Developer**.
+2. Нажмите **Edit Config**. Claude откроет файл настроек в текстовом редакторе.
+3. Добавьте сервер в `mcpServers`:
 
 ```json
 {
@@ -205,6 +218,13 @@ claude mcp add yandex-audience \
   }
 }
 ```
+
+Если кнопки **Edit Config** нет, откройте файл напрямую:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+[Официальная инструкция Claude Desktop](https://claude.com/docs/connectors/building/mcp-apps/getting-started)
 
 </details>
 
@@ -213,34 +233,14 @@ claude mcp add yandex-audience \
 
 <br>
 
-Добавьте сервер в `~/.cursor/mcp.json` или в `.cursor/mcp.json` проекта:
+Пользовательский локальный сервер добавляется в Cursor через файл `mcp.json`:
+
+- macOS и Linux: `~/.cursor/mcp.json`
+- Windows: `%USERPROFILE%\.cursor\mcp.json`
 
 ```json
 {
   "mcpServers": {
-    "yandex-audience": {
-      "command": "npx",
-      "args": ["-y", "mcp-yandex-audience@latest"],
-      "env": {
-        "YANDEX_AUDIENCE_TOKEN": "ваш_токен"
-      }
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>VS Code</strong></summary>
-
-<br>
-
-Создайте `.vscode/mcp.json`. Здесь используется ключ `servers`, а не `mcpServers`:
-
-```json
-{
-  "servers": {
     "yandex-audience": {
       "type": "stdio",
       "command": "npx",
@@ -252,6 +252,44 @@ claude mcp add yandex-audience \
   }
 }
 ```
+
+[Официальная инструкция Cursor](https://cursor.com/docs/mcp)
+
+</details>
+
+<details>
+<summary><strong>VS Code</strong></summary>
+
+<br>
+
+Откройте палитру команд и выполните **MCP: Open User Configuration**. VS Code создаст пользовательский файл MCP. Добавьте в него:
+
+```json
+{
+  "servers": {
+    "yandex-audience": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "mcp-yandex-audience@latest"],
+      "env": {
+        "YANDEX_AUDIENCE_TOKEN": "${input:yandex_audience_token}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "yandex_audience_token",
+      "description": "OAuth-токен Яндекс Аудиторий",
+      "password": true
+    }
+  ]
+}
+```
+
+Проверьте сервер командой **MCP: List Servers**.
+
+[Официальная инструкция VS Code](https://code.visualstudio.com/docs/agent-customization/mcp-servers)
 
 </details>
 
@@ -309,7 +347,7 @@ ASKADS_TELEMETRY=0
 - **Для хешей используется SHA256.** MD5 не принимается API с 1 января 2025 года.
 - **Есть квоты API.** До 30 запросов в секунду с IP и 5 000 в сутки на логин; создание и изменение сегментов — до 10 в минуту, 100 в час и 500 в сутки. Ошибочные запросы тоже расходуют квоту.
 - **Минимум 100 записей.** При подтверждении меньшего сегмента можно явно передать `check_size: false`; максимальный размер файла — 1 ГБ.
-- **Нет фонового наблюдения.** Сервер работает во время вызова из AI-клиента и сам не ждёт завершения обработки между задачами.
+- **Нет фонового наблюдения.** Сервер работает во время вызова из AI-клиента и сам не ждёт завершения обработки между задачами. Если приложение поддерживает задания по расписанию, попросите его периодически проверять статусы через `list_segments`.
 
 ## Документация и разработка
 
@@ -319,20 +357,6 @@ ASKADS_TELEMETRY=0
 - [npm-пакет](https://www.npmjs.com/package/mcp-yandex-audience) — опубликованная версия `mcp-yandex-audience`.
 - [API Яндекс Аудиторий](https://yandex.ru/dev/audience/) — официальная документация.
 
-Проверить проект локально:
-
-```bash
-npm install
-npm run typecheck
-npm test
-```
-
-Тесты не обращаются к сети. `npm run smoke` — отдельная живая read-only проверка с реальным токеном.
-
 ## Помощь и обратная связь
 
 Нашли ошибку или не хватает сценария? [Создайте issue](https://github.com/A1-x-Tech/mcp-yandex-audience/issues) или напишите в Telegram: [@gistrec](https://t.me/gistrec).
-
-## Лицензия
-
-MIT — см. [LICENSE](LICENSE).
