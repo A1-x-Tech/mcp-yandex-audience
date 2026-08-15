@@ -79,7 +79,15 @@
 
 1. [Получите OAuth-токен](#получение-доступа-к-api).
 
-2. Добавьте MCP-сервер в Codex:
+2. Добавьте MCP-сервер в Codex.
+
+   **Через интерфейс приложения:**
+
+   1. Откройте **Settings → Plugins → MCP servers**.
+   2. Нажмите **Add server**.
+   3. Добавьте команду запуска `npx -y mcp-yandex-audience@latest` и переменную окружения `YANDEX_AUDIENCE_TOKEN` со своим токеном.
+
+   **Через командную строку:**
 
    ```bash
    codex mcp add yandex-audience \
@@ -162,13 +170,27 @@
 
 <br>
 
+**Через интерфейс приложения:**
+
+1. Откройте **Settings → Plugins → MCP servers**.
+2. Нажмите **Add server**.
+3. Добавьте команду запуска `npx -y mcp-yandex-audience@latest` и переменную окружения `YANDEX_AUDIENCE_TOKEN` со своим токеном.
+
+**Через командную строку:**
+
 ```bash
 codex mcp add yandex-audience \
   --env YANDEX_AUDIENCE_TOKEN=ваш_токен \
   -- npx -y mcp-yandex-audience@latest
 ```
 
-После подключения начните новую задачу и попросите показать сегменты без изменений.
+Проверьте подключение:
+
+```bash
+codex mcp list
+```
+
+[Официальная инструкция Codex](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 
 </details>
 
