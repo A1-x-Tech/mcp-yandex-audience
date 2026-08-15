@@ -1,12 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ConfigError, loadConfig } from "./config.js";
+import { loadConfig } from "./config.js";
 
-/**
- * The reason codes below are the vocabulary the telemetry dashboard groups by —
- * renaming one silently splits a bar in two, so they are pinned here.
- */
 function withEnv(vars: Record<string, string | undefined>, run: () => void): void {
   const saved = new Map(Object.keys(vars).map((k) => [k, process.env[k]]));
   for (const [k, v] of Object.entries(vars)) {
@@ -23,21 +19,36 @@ function withEnv(vars: Record<string, string | undefined>, run: () => void): voi
   }
 }
 
-function reasonOf(vars: Record<string, string | undefined>): string {
-  let caught: unknown;
-  withEnv(vars, () => {
-    try {
-      loadConfig();
-    } catch (err) {
-      caught = err;
-    }
-  });
-  assert.ok(caught instanceof ConfigError, "config problems must throw ConfigError, not exit");
-  return caught.reason;
-}
+/**
+ * A missing token used to throw, which killed the process before the MCP
+ * handshake and left the user with a dead server and no reason. It is now a
+ * survivable state: the server starts, answers initialize/tools/list, and the
+ * client raises CredentialsError at call time (pinned in client.test.ts).
+ * Pinned here because reverting it would restore that dead end.
+ */
+test("a missing OAuth token does not throw — the server must start degraded", () => {
+  withEnv(
+    {
+      YANDEX_AUDIENCE_TOKEN: undefined,
+      YANDEX_AUDIENCE_API_HOST: undefined,
+      YANDEX_AUDIENCE_TIMEOUT_MS: undefined,
+      YANDEX_AUDIENCE_MAX_RETRIES: undefined,
+    },
+    () => {
+      const cfg = loadConfig();
+      assert.equal(cfg.token, undefined);
+      // The rest of the config stays usable: defaults intact.
+      assert.equal(cfg.apiHost, "https://api-audience.yandex.ru");
+      assert.equal(cfg.timeoutMs, 60_000);
+      assert.equal(cfg.maxRetries, 3);
+    },
+  );
+});
 
-test("a missing OAuth token reports missing_token", () => {
-  assert.equal(reasonOf({ YANDEX_AUDIENCE_TOKEN: undefined }), "missing_token");
+test("an empty value is treated as absent, not as an empty credential", () => {
+  withEnv({ YANDEX_AUDIENCE_TOKEN: "" }, () => {
+    assert.equal(loadConfig().token, undefined);
+  });
 });
 
 test("a configured server loads with the default host", () => {
