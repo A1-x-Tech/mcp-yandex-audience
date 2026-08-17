@@ -1,5 +1,7 @@
 # Tools
 
+For task-oriented guidance, open the [MCP capability catalog](./capabilities/index.md). This page remains the technical reference for schemas and API responses.
+
 The Yandex Audience Management API (`api-audience.yandex.ru`, `/v1/management/*`)
 is a **write API**: tools create, update and delete segments, pixels and grants.
 Auth is a Yandex OAuth token (`Authorization: OAuth <token>`), attached by the
