@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { AudienceClient } from "../dist/client.js";
+import { registerAuthTools } from "../dist/tools/auth.js";
 import { registerSegmentTools } from "../dist/tools/segments.js";
 import { registerPixelTools } from "../dist/tools/pixels.js";
 import { registerGrantTools } from "../dist/tools/grants.js";
@@ -9,6 +13,7 @@ import { registerRawTool } from "../dist/tools/raw.js";
 
 const ALL_TOOLS = [
   "add_segment_grant",
+  "auth_status",
   "confirm_segment",
   "create_lookalike_segment",
   "create_pixel",
@@ -16,11 +21,14 @@ const ALL_TOOLS = [
   "delete_pixel",
   "delete_segment",
   "delete_segment_grant",
+  "finish_login",
   "list_pixels",
   "list_segment_grants",
   "list_segments",
+  "logout",
   "raw_request",
   "rename_segment",
+  "start_login",
   "update_pixel",
   "upload_segment_csv_file",
   "upload_segment_file",
@@ -71,6 +79,7 @@ test("dist registers the expected tools", () => {
   };
   const client = {};
 
+  registerAuthTools(server, client, {});
   registerSegmentTools(server, client);
   registerPixelTools(server, client);
   registerGrantTools(server, client);
@@ -113,13 +122,19 @@ test("dist server without a token still answers initialize, tools/list and a cal
   // The regression this exists for: with no YANDEX_AUDIENCE_TOKEN the server
   // used to exit(1) before the MCP handshake, so the client showed a dead
   // server and the user never learned why. It must now start, list its tools,
-  // open the instructions with the fix, and answer a tool call with the
-  // credentials error instead of dropping the connection. No network: the
-  // credentials check rejects the call before fetch.
+  // open the instructions with the fix (the in-chat login), and answer a tool
+  // call with the auth error instead of dropping the connection. No network:
+  // the token check rejects the call before fetch. XDG_CONFIG_HOME points at a
+  // fresh temp dir so a login stored on the developer's machine cannot make
+  // this "unconfigured" server connected.
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
 
-  const env = { ...process.env, ASKADS_TELEMETRY: "0" };
+  const env = {
+    ...process.env,
+    ASKADS_TELEMETRY: "0",
+    XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), "mcp-audience-unconfigured-")),
+  };
   delete env.YANDEX_AUDIENCE_TOKEN;
 
   const transport = new StdioClientTransport({
@@ -138,18 +153,25 @@ test("dist server without a token still answers initialize, tools/list and a cal
     );
 
     const instructions = client.getInstructions() ?? "";
-    assert.match(instructions, /YANDEX_AUDIENCE_TOKEN/, "instructions must name the variable to set");
-    assert.match(instructions, /перезапустить сервер/, "and say the server needs a restart");
+    assert.match(instructions, /start_login/, "instructions must name the in-chat login");
+    assert.match(instructions, /YANDEX_AUDIENCE_TOKEN/, "and the env-var alternative");
+    assert.match(instructions, /перезапустить сервер/, "which needs a restart");
 
     const result = await client.callTool({ name: "list_segments", arguments: {} });
     assert.equal(result.isError, true, "the call must fail, not the connection");
     const text = result.content.map((c) => c.text ?? "").join(" ");
-    assert.match(
-      text,
-      /YANDEX_AUDIENCE_TOKEN is required/,
-      "the error must carry the historical startup text",
-    );
-    assert.match(text, /restart the server/, "and the fix");
+    assert.match(text, /start_login/, "the error must name the in-chat fix");
+    assert.match(text, /YANDEX_AUDIENCE_TOKEN/, "and the env-var alternative");
+    assert.match(text, /не сбой сети/, "and must stop the model from retrying");
+
+    // The login can actually start: a PKCE authorize URL, minted locally.
+    const login = await client.callTool({ name: "start_login", arguments: {} });
+    assert.notEqual(login.isError, true);
+    const payload = JSON.parse(login.content[0]?.text ?? "{}");
+    const url = new URL(payload.authorizeUrl ?? "");
+    assert.equal(url.origin + url.pathname, "https://oauth.yandex.ru/authorize");
+    assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+    assert.ok(!url.search.includes("client_secret"), "a public client must not leak a secret");
   } finally {
     await client.close();
   }

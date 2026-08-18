@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AuthRequiredError, NOT_CONNECTED_MESSAGE, TokenStore } from "./auth.js";
+import { writeCredentials } from "./credentials.js";
 import { AudienceClient } from "./client.js";
-import { CredentialsError, MISSING_TOKEN_MESSAGE } from "./types.js";
 import type { AudienceConfig } from "./types.js";
 
 const BASE = "https://api-audience.yandex.ru";
@@ -438,64 +442,163 @@ test("request() still accepts a relative API path (with an inline query string)"
   }
 });
 
-// --- Missing credentials (degraded start) ---
+// --- Missing credentials (no env token, nothing stored) ---
 
-// The exact call-time message: the first sentence is the historical startup
-// error, verbatim, the rest is the fix. Pinned as a literal so a reworded
-// message does not silently change what the model tells the user.
-const EXPECTED_MISSING_TOKEN_MESSAGE =
-  "YANDEX_AUDIENCE_TOKEN is required (Yandex OAuth token; register an app at " +
-  "https://oauth.yandex.ru/client/new with the Yandex Audience segment read/write scopes). " +
-  "This is not a network failure and retrying will not help: the operator must set this " +
-  "environment variable in the MCP client's server config and restart the server — it is " +
-  "read only at startup.";
+/**
+ * Runs `fn` with XDG_CONFIG_HOME pointed at a fresh temp dir, so "no token"
+ * tests never read the developer's real credentials.json (which would make
+ * them pass or fail depending on whose machine runs them).
+ */
+async function withTempConfig<T>(fn: () => T | Promise<T>): Promise<T> {
+  const saved = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), "mcp-audience-client-"));
+  try {
+    return await fn();
+  } finally {
+    if (saved === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = saved;
+  }
+}
 
-/** Asserts the rejection is a CredentialsError carrying the pinned text verbatim. */
-function isCredentialsError(err: unknown): boolean {
-  assert.ok(err instanceof CredentialsError, "must be a CredentialsError");
-  assert.equal((err as Error).name, "CredentialsError");
-  assert.equal((err as Error).message, EXPECTED_MISSING_TOKEN_MESSAGE);
+/** Asserts the rejection is an AuthRequiredError carrying the pinned text verbatim. */
+function isAuthRequiredError(err: unknown): boolean {
+  assert.ok(err instanceof AuthRequiredError, "must be an AuthRequiredError");
+  assert.equal((err as Error).name, "AuthRequiredError");
+  // The exact literal is pinned in auth.test.ts; here it is enough that the
+  // client surfaces that same message, with both fixes named.
+  assert.equal((err as Error).message, NOT_CONNECTED_MESSAGE);
   return true;
 }
 
-test("the exported missing-token message matches the pinned literal", () => {
-  assert.equal(MISSING_TOKEN_MESSAGE, EXPECTED_MISSING_TOKEN_MESSAGE);
+test("request() without a token fails immediately — no retries, no backoff, no request", async () => {
+  await withTempConfig(async () => {
+    const mock = mockFetch(() => new Response("{}", { status: 200 }));
+    try {
+      // maxRetries is deliberately high: if the auth error were treated as a
+      // transport failure this would sit in backoff for seconds before answering.
+      const client = new AudienceClient({ apiHost: BASE, maxRetries: 5, retryBaseMs: 1000 });
+      const started = Date.now();
+      await assert.rejects(() => client.listSegments(), isAuthRequiredError);
+      assert.ok(Date.now() - started < 500, "the answer must be immediate, not backed off");
+      assert.equal(mock.calls.length, 0, "fetch must not be called without credentials");
+    } finally {
+      mock.restore();
+    }
+  });
 });
 
-test("request() without a token throws CredentialsError; fetch is never called", async () => {
-  const mock = mockFetch(() => new Response("{}", { status: 200 }));
-  try {
-    const client = new AudienceClient({ apiHost: BASE, maxRetries: 0 });
-    await assert.rejects(() => client.listSegments(), isCredentialsError);
-    // Not transport trouble: the retry/backoff branch — and fetch itself —
-    // must never run for a configuration problem.
-    assert.equal(mock.calls.length, 0, "fetch must not be called without credentials");
-  } finally {
-    mock.restore();
-  }
-});
-
-test("upload() without a token throws CredentialsError too; fetch is never called", async () => {
-  const mock = mockFetch(() => new Response("{}", { status: 200 }));
-  try {
-    const client = new AudienceClient({ apiHost: BASE, maxRetries: 0 });
-    await assert.rejects(
-      () => client.uploadSegmentFile("ids.tsv", new Uint8Array([1])),
-      isCredentialsError,
-    );
-    assert.equal(mock.calls.length, 0, "fetch must not be called without credentials");
-  } finally {
-    mock.restore();
-  }
+test("upload() without a token throws AuthRequiredError too; fetch is never called", async () => {
+  await withTempConfig(async () => {
+    const mock = mockFetch(() => new Response("{}", { status: 200 }));
+    try {
+      const client = new AudienceClient({ apiHost: BASE, maxRetries: 0 });
+      await assert.rejects(
+        () => client.uploadSegmentFile("ids.tsv", new Uint8Array([1])),
+        isAuthRequiredError,
+      );
+      assert.equal(mock.calls.length, 0, "fetch must not be called without credentials");
+    } finally {
+      mock.restore();
+    }
+  });
 });
 
 test("an empty-string token counts as missing, not as an empty credential", async () => {
-  const mock = mockFetch(() => new Response("{}", { status: 200 }));
-  try {
-    const client = new AudienceClient({ token: "", apiHost: BASE, maxRetries: 0 });
-    await assert.rejects(() => client.listPixels(), isCredentialsError);
-    assert.equal(mock.calls.length, 0, "fetch must not be called without credentials");
-  } finally {
-    mock.restore();
-  }
+  await withTempConfig(async () => {
+    const mock = mockFetch(() => new Response("{}", { status: 200 }));
+    try {
+      const client = new AudienceClient({ token: "", apiHost: BASE, maxRetries: 0 });
+      await assert.rejects(() => client.listPixels(), isAuthRequiredError);
+      assert.equal(mock.calls.length, 0, "fetch must not be called without credentials");
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+// --- In-chat login: per-request token resolution ---
+
+test("a token stored mid-session is picked up by the very next call — no restart", async () => {
+  await withTempConfig(async () => {
+    const mock = mockFetch(() => new Response(JSON.stringify({ segments: [] }), { status: 200 }));
+    try {
+      const client = new AudienceClient({ apiHost: BASE, maxRetries: 0 });
+      // Before the login: not connected, nothing fetched.
+      await assert.rejects(() => client.listSegments(), AuthRequiredError);
+      assert.equal(mock.calls.length, 0);
+
+      // What finish_login does: write the credentials file. Same process, same client.
+      new TokenStore(undefined).save({ access_token: "fresh-token" });
+
+      // The next call must succeed with the new token: it is resolved per
+      // request, never cached on the client instance.
+      await client.listSegments();
+      assert.equal(mock.calls.length, 1);
+      assert.equal(
+        (mock.calls[0].init.headers as Record<string, string>).Authorization,
+        "OAuth fresh-token",
+      );
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+test("an env token beats the stored one", async () => {
+  await withTempConfig(async () => {
+    writeCredentials({ access_token: "stored", obtained_at: Date.now() });
+    const mock = mockFetch(() => new Response("{}", { status: 200 }));
+    try {
+      await new AudienceClient({ token: "from-env", apiHost: BASE, maxRetries: 0 }).listPixels();
+      assert.equal(
+        (mock.calls[0].init.headers as Record<string, string>).Authorization,
+        "OAuth from-env",
+      );
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+test("a 401 on a stored token triggers one silent refresh and a replay", async () => {
+  await withTempConfig(async () => {
+    writeCredentials({ access_token: "revoked", refresh_token: "rt", obtained_at: Date.now() });
+    const seen: string[] = [];
+    const mock = mockFetch((url, init) => {
+      if (url.startsWith("https://oauth.yandex.ru/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "re-minted", refresh_token: "rt2", expires_in: 3600 }),
+          { status: 200 },
+        );
+      }
+      seen.push((init.headers as Record<string, string>).Authorization);
+      if (seen.length === 1) return new Response("dead token", { status: 401 });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    try {
+      // No env token: the client must be running on the stored credentials.
+      const client = new AudienceClient({ apiHost: BASE, retryBaseMs: 0, maxRetries: 0 });
+      const result = await client.listSegments();
+      assert.deepEqual(result, { ok: true });
+      assert.deepEqual(seen, ["OAuth revoked", "OAuth re-minted"], "one replay with the fresh token");
+    } finally {
+      mock.restore();
+    }
+  });
+});
+
+test("a plain 403 (permissions, not a dead token) is NOT retried with a refresh", async () => {
+  await withTempConfig(async () => {
+    writeCredentials({ access_token: "t", refresh_token: "rt", obtained_at: Date.now() });
+    const mock = mockFetch(() =>
+      new Response(JSON.stringify({ errors: [{ error_type: "access_denied" }] }), { status: 403 }),
+    );
+    try {
+      const client = new AudienceClient({ apiHost: BASE, retryBaseMs: 0, maxRetries: 0 });
+      await assert.rejects(() => client.listSegments(), /HTTP 403/);
+      assert.equal(mock.calls.length, 1, "re-minting cannot fix a permission problem");
+    } finally {
+      mock.restore();
+    }
+  });
 });

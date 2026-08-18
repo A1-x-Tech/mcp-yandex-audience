@@ -5,7 +5,9 @@ tools wrap segment management (file/CRM uploads with two-phase confirm,
 lookalike, pixel-based), pixels and access grants; `raw_request` is the escape
 hatch. The server talks to the **Yandex Audience Management API**
 (`api-audience.yandex.ru`, `/v1/management/*`); auth is a Yandex OAuth token
-sent as `Authorization: OAuth <token>` on every request.
+sent as `Authorization: OAuth <token>` on every request — either from
+`YANDEX_AUDIENCE_TOKEN` or minted by the in-chat login (`start_login` /
+`finish_login`).
 
 ## Commands
 
@@ -20,25 +22,42 @@ npm run smoke      # live READ-ONLY call (needs YANDEX_AUDIENCE_TOKEN)
 ## Architecture
 
 - `src/config.ts` — env → config. A missing `YANDEX_AUDIENCE_TOKEN` is NOT an error: the
-  field stays `undefined`, the server starts degraded and the client raises
-  `CredentialsError` (types.ts) at call time. `ConfigError` (with a `reason` code) is
-  reserved for malformed values, caught by `loadConfigOrDegraded` in `index.ts` (no such
-  checks exist today). Optional `YANDEX_AUDIENCE_API_HOST` (default
-  `https://api-audience.yandex.ru`), `YANDEX_AUDIENCE_TIMEOUT_MS`, `YANDEX_AUDIENCE_MAX_RETRIES`.
+  field stays `undefined`, the server starts and the token is resolved per request by the
+  `TokenStore`. `ConfigError` (with a `reason` code) is reserved for malformed values, caught
+  by `loadConfigOrDegraded` in `index.ts` (no such checks exist today). Optional
+  `YANDEX_AUDIENCE_API_HOST` (default `https://api-audience.yandex.ru`),
+  `YANDEX_AUDIENCE_TIMEOUT_MS`, `YANDEX_AUDIENCE_MAX_RETRIES`.
+- `src/oauth.ts` — the OAuth flow: PKCE pair (S256), authorize URL with the
+  `https://oauth.yandex.ru/verification_code` redirect, code exchange and refresh.
+  **No `client_secret`** — this is a public client, and a secret inside an npm package would
+  protect nothing. Scope is pinned to `audience:read audience:write`. The pending verifier
+  lives in one module-level slot (one stdio server = one user); a second `start_login`
+  replaces it. Own app via `YANDEX_AUDIENCE_OAUTH_CLIENT_ID`.
+- `src/credentials.ts` — `~/.config/mcp-yandex-audience/credentials.json`, mode `0600`. An
+  unparsable file reads as "not connected", never as an empty token.
+- `src/auth.ts` — `TokenStore`: resolves the token per request (env wins over stored),
+  refreshes on expiry, and raises `AuthRequiredError` whose *message* is the product — it is
+  the only text the user ever sees about a missing token, and it names both fixes
+  (`start_login` in the chat, or `YANDEX_AUDIENCE_TOKEN` + restart). It replaced the old
+  `CredentialsError`.
 - `src/client.ts` — one typed method per endpoint (`listSegments`, `confirmSegment`,
   `createLookalikeSegment`, `createPixel`, `addSegmentGrant`, …): OAuth header, path/query/body
   assembly (`{segment: …}` / `{pixel: …}` / `{grant: …}` envelopes, `compact()` drops undefined),
   `upload()` for multipart file uploads (no explicit Content-Type — fetch sets the boundary).
-  A missing token is rejected with `CredentialsError` while the auth header is built — before
-  the request, the retries and fetch; the message is the product: it preserves the historical
-  startup text and says to set the variable and restart.
+  The token comes from the `TokenStore` on EVERY attempt (never cached on the instance);
+  a missing token raises `AuthRequiredError` while the auth header is built — rethrown before
+  the retry/backoff branch and before fetch. A 401 (or 403 naming `invalid_token`) on a
+  stored token triggers one silent refresh + replay.
   `request()` resolves the path against the base and rejects any path that escapes to a foreign
   origin (SSRF guard), enforces an AbortController timeout that also covers reading the body,
   and throws `AudienceError(status, body)` parsing the API's
   `{errors: [{error_type, message, location}], code, message}` format.
   **Retries: 429 for any method; 5xx/network only for GET** — repeating a committed write
   would duplicate it.
-- `src/tools/segments.ts` — `list_segments`, `upload_segment_file`, `upload_segment_csv_file`,
+- `src/tools/auth.ts` — `auth_status`, `start_login`, `finish_login`, `logout`: the in-chat
+  login. `finish_login` stores the token and proves it with a live `listSegments` read;
+  `logout` deletes only the stored file, never the env token.
+  `src/tools/segments.ts` — `list_segments`, `upload_segment_file`, `upload_segment_csv_file`,
   `confirm_segment`, `rename_segment`, `delete_segment`, `create_lookalike_segment`,
   `create_pixel_segment`. Upload tools accept `file_path` XOR `content` (checked in the
   handler — cross-field rules can't live in a plain-object inputSchema).
@@ -48,8 +67,9 @@ npm run smoke      # live READ-ONLY call (needs YANDEX_AUDIENCE_TOKEN)
   `src/tools/util.ts` — `ok`/`fail`, the annotation constants
   (`READ_ONLY`/`WRITE`/`WRITE_IDEMPOTENT`/`DESTRUCTIVE`/`RAW`) and shared zod field factories.
 - `src/index.ts` — wires every `register*` into the McpServer. `loadConfigOrDegraded` starts
-  the server even on a config problem; without a token the initialize `instructions` open
-  with the unconfigured prefix (set `YANDEX_AUDIENCE_TOKEN` and restart).
+  the server even on a config problem; `connected = tokens.hasToken()` is resolved once, only
+  to pick the instructions text — without a token they open with the unconfigured prefix
+  (connect via `start_login` right in the chat, or set `YANDEX_AUDIENCE_TOKEN` and restart).
 - `src/telemetry.ts` — anonymous usage pings (ids/names/versions only, never data or
   arguments; fire-and-forget, must never block or throw; opt-out `ASKADS_TELEMETRY=0`).
   `server_start` means "a usable install started"; an install without a token sends
@@ -62,15 +82,18 @@ npm run smoke      # live READ-ONLY call (needs YANDEX_AUDIENCE_TOKEN)
 - **Never exit because of configuration.** A server that dies before the MCP handshake leaves
   the user with a dead server and no reason — the sibling Metrica server's telemetry showed
   that state accounted for nearly every unconfigured install. A missing token is a survivable
-  state: start, answer `initialize`/`tools/list` (with the unconfigured prefix in the
-  instructions), and reject tool calls with `CredentialsError`. There are no login tools:
-  the token comes only from the environment, so the fix is the operator setting
-  `YANDEX_AUDIENCE_TOKEN` and restarting the server. `config.test.ts`, `client.test.ts` and
-  `test/dist-smoke.test.js` pin this.
-- **Credential failures are not transport failures.** `CredentialsError` is thrown while the
-  auth header is built (in `headers()`, before `send()`'s retry/backoff loop and before
-  fetch) — retrying it burns seconds of backoff before the user sees the one message that
-  helps. Pinned by "fetch must not be called" assertions in `client.test.ts`.
+  state: start, serve the login tools, answer `initialize`/`tools/list` (with the unconfigured
+  prefix in the instructions), and reject data calls with `AuthRequiredError`. The fix is
+  either the in-chat login (`start_login` → `finish_login`, no restart) or the operator
+  setting `YANDEX_AUDIENCE_TOKEN` and restarting the server. `config.test.ts`,
+  `client.test.ts` and `test/dist-smoke.test.js` pin this.
+- **Auth failures are not transport failures.** `AuthRequiredError` is raised while the
+  auth header is built and rethrown in `send()` before the retry/backoff branch and before
+  fetch — retrying it burns seconds of backoff before the user sees the one message that
+  helps. Pinned by "fetch must not be called" + timing assertions in `client.test.ts`.
+- **The token is resolved per request, never cached on the client.** That is what makes
+  `finish_login` take effect mid-session without a client restart. `YANDEX_AUDIENCE_TOKEN`
+  beats the stored login; `logout` never touches the env token.
 - **This is a write API — annotate deliberately.** Every tool carries one of the five
   annotation constants; `annotations.test.ts` pins the full tool → hints map. New GETs are
   `READ_ONLY`, POSTs/uploads `WRITE`, PUTs `WRITE_IDEMPOTENT`, DELETEs `DESTRUCTIVE`.

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { registerAuthTools } from "./auth.js";
 import { registerSegmentTools } from "./segments.js";
 import { registerPixelTools } from "./pixels.js";
 import { registerGrantTools } from "./grants.js";
@@ -20,7 +21,8 @@ function collectAnnotations(): Record<string, Annotations | undefined> {
       annotations[name] = cfg.annotations;
     },
   };
-  // Registration reads the client only inside handlers, so a stub is fine here.
+  // Registration reads the client/store only inside handlers, so stubs are fine here.
+  registerAuthTools(server as never, {} as never, {} as never);
   registerSegmentTools(server as never, {} as never);
   registerPixelTools(server as never, {} as never);
   registerGrantTools(server as never, {} as never);
@@ -42,6 +44,15 @@ const RAW = { readOnlyHint: false, destructiveHint: true, idempotentHint: false,
  * idempotently, DELETEs are destructive, and raw_request assumes the worst.
  */
 const EXPECTED: Record<string, Annotations> = {
+  // The in-chat login, mirroring the Metrica sibling's choices: the two steps
+  // that only read or mint local state are read-only (start_login mutates
+  // nothing outside this process), finish_login writes the credentials file
+  // idempotently (same code → same stored token), logout deletes it.
+  auth_status: READ_ONLY,
+  start_login: READ_ONLY,
+  finish_login: WRITE_IDEMPOTENT,
+  logout: DESTRUCTIVE,
+
   list_segments: READ_ONLY,
   list_pixels: READ_ONLY,
   list_segment_grants: READ_ONLY,
@@ -64,7 +75,7 @@ const EXPECTED: Record<string, Annotations> = {
   raw_request: RAW,
 };
 
-test("registers all sixteen tools with annotations", () => {
+test("registers all twenty tools with annotations", () => {
   assert.deepEqual(Object.keys(ANN).sort(), Object.keys(EXPECTED).sort());
   for (const [name, a] of Object.entries(ANN)) {
     assert.ok(a, `${name} is missing annotations`);
