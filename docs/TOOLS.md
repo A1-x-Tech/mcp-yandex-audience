@@ -12,6 +12,31 @@ path building live in the client, not the tools.
 Every tool carries explicit MCP annotations: GETs are read-only, POSTs/uploads
 create, PUTs update idempotently, DELETEs are destructive.
 
+## Connection — OAuth with PKCE
+
+The connection tools (`finish_login`, `logout`) write only to the local disk;
+the single Audience API call `finish_login` makes is a read that verifies the
+fresh token.
+
+| Tool | Description |
+|---|---|
+| `auth_status` | Whether a token exists, where it came from (`env` / `stored`), when it expires and where the credentials file lives. Touches no network, never shows the token itself. |
+| `start_login` | Step 1 of the in-chat login: returns a Yandex OAuth URL. The user signs in and gets a confirmation code (valid for 10 minutes). |
+| `finish_login` | Step 2: exchanges the code for a token, stores it in `~/.config/mcp-yandex-audience/credentials.json` (mode `0600`) and immediately verifies it with a live read. Takes effect without restarting the client. |
+| `logout` | Deletes the stored token. Leaves `YANDEX_AUDIENCE_TOKEN` alone and does not revoke the app's access on Yandex's side (that lives in [Yandex ID](https://id.yandex.ru/security)). |
+
+Notes:
+- **The secret never leaves the machine.** PKCE: the `code_verifier` stays in the
+  process; only the one-shot confirmation code passes through the chat, and it is
+  useless without the verifier.
+- **Source priority:** `YANDEX_AUDIENCE_TOKEN` beats the stored login. An env
+  token is never refreshed or deleted by the server.
+- **Renewal is automatic:** the refresh token is stored alongside the access
+  token; an expired (or revoked — the API answers 401/403 `invalid_token`)
+  access token is re-minted silently.
+- **Scope is explicit:** the login asks for `audience:read audience:write` — the
+  Audience segment read/write rights and nothing else — with `force_confirm=yes`.
+
 ## Segments
 
 | Tool | Description |
@@ -63,7 +88,8 @@ Notes:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `YANDEX_AUDIENCE_TOKEN` | yes | — | Yandex OAuth token, sent as `Authorization: OAuth …`. Treat it as a secret. |
+| `YANDEX_AUDIENCE_TOKEN` | no | — | Yandex OAuth token, sent as `Authorization: OAuth …`. Treat it as a secret. Optional since the in-chat login exists; when set it beats the stored login and is never refreshed or deleted by the server. |
+| `YANDEX_AUDIENCE_OAUTH_CLIENT_ID` | no | the A1-x-Tech app | ClientID of your own OAuth app for the in-chat login (must use redirect URI `https://oauth.yandex.ru/verification_code`). |
 | `YANDEX_AUDIENCE_API_HOST` | no | `https://api-audience.yandex.ru` | API host override (`https://api-audience.yandex.com` for international accounts). |
 | `YANDEX_AUDIENCE_TIMEOUT_MS` | no | `60000` | Per-request timeout, ms. |
 | `YANDEX_AUDIENCE_MAX_RETRIES` | no | `3` | Retries on 429 (5xx/network retried for GET only — writes must not be duplicated). |

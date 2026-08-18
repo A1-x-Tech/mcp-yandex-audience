@@ -22,20 +22,19 @@ export class ConfigError extends Error {
 /**
  * Builds the client config from environment variables.
  *
- * A missing token is NOT an error here: the server starts anyway and the check
- * happens per tool call (CredentialsError in types.ts, thrown by the client),
- * so an unconfigured install completes the MCP handshake and the model can tell
- * the user which variable to set — instead of dying before `initialize` and
- * leaving a dead server with no reason. There is no in-chat login: the fix is
- * the operator setting the variable and restarting the server. (No
- * malformed-value checks exist today — bad numeric overrides fall back to their
- * defaults — so loadConfig currently never throws; ConfigError is kept for
- * future checks.)
+ * A missing token is NOT an error here: the server starts anyway and the token
+ * is resolved per request (env → stored credentials, TokenStore in auth.ts), so
+ * an unconfigured install can log in from the chat (`start_login`) instead of
+ * dying before the MCP handshake — which is where it used to leave the user
+ * with a dead server and no reason. (No malformed-value checks exist today —
+ * bad numeric overrides fall back to their defaults — so loadConfig currently
+ * never throws; ConfigError is kept for future checks.)
  *
- *   YANDEX_AUDIENCE_TOKEN        Yandex OAuth token
- *   YANDEX_AUDIENCE_API_HOST     API host override (default https://api-audience.yandex.ru)
- *   YANDEX_AUDIENCE_TIMEOUT_MS   per-request timeout, ms (default 60000)
- *   YANDEX_AUDIENCE_MAX_RETRIES  retries for transient errors (default 3)
+ *   YANDEX_AUDIENCE_TOKEN            Yandex OAuth token (optional — in-chat login otherwise)
+ *   YANDEX_AUDIENCE_OAUTH_CLIENT_ID  own OAuth app for the in-chat login (read in oauth.ts)
+ *   YANDEX_AUDIENCE_API_HOST         API host override (default https://api-audience.yandex.ru)
+ *   YANDEX_AUDIENCE_TIMEOUT_MS       per-request timeout, ms (default 60000)
+ *   YANDEX_AUDIENCE_MAX_RETRIES      retries for transient errors (default 3)
  */
 export function loadConfig(): AudienceConfig {
   const timeoutMs = Number(process.env.YANDEX_AUDIENCE_TIMEOUT_MS);

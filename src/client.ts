@@ -1,3 +1,4 @@
+import { AuthRequiredError, TokenStore } from "./auth.js";
 import type {
   AudienceConfig,
   DeviceMatchingType,
@@ -6,7 +7,7 @@ import type {
   SegmentContentType,
   TimesQuantityOperation,
 } from "./types.js";
-import { AudienceError, CredentialsError } from "./types.js";
+import { AudienceError } from "./types.js";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -72,7 +73,13 @@ export interface AddSegmentGrantParams {
 }
 
 interface SendOptions {
-  headers: Record<string, string>;
+  /**
+   * Rebuilt per attempt: the token is resolved by the TokenStore on EVERY
+   * request (env wins, else the credentials file), never cached on the client —
+   * that is what lets `finish_login` take effect mid-session, and what lets a
+   * silent refresh replay the request with a fresh token.
+   */
+  makeHeaders: () => Promise<Record<string, string>>;
   /** Rebuilt per attempt so a retried multipart body is never a spent stream. */
   makeBody: () => RequestInit["body"];
   /**
@@ -89,23 +96,29 @@ export class AudienceClient {
   private readonly maxRetries: number;
   private readonly retryBaseMs: number;
 
-  constructor(private readonly config: AudienceConfig) {
+  private readonly tokens: TokenStore;
+
+  constructor(
+    private readonly config: AudienceConfig,
+    tokens?: TokenStore,
+  ) {
     this.base = config.apiHost.endsWith("/") ? config.apiHost : config.apiHost + "/";
     this.timeoutMs = config.timeoutMs ?? 60_000;
     this.maxRetries = config.maxRetries ?? 3;
     this.retryBaseMs = config.retryBaseMs ?? 500;
+    // Default store keeps the old contract for callers that pass a plain config
+    // (tests, smoke): config.token wins, stored credentials are the fallback.
+    this.tokens = tokens ?? new TokenStore(config.token);
   }
 
   /** OAuth header on every request; Content-Type only when we serialize JSON ourselves. */
-  private headers(contentType?: string): Record<string, string> {
-    // Both request() and upload() build their headers before send() runs, so a
-    // missing token is rejected here — before the request is built, retried or
-    // sent. It is a configuration problem, not transport trouble: it must never
-    // enter the retry/backoff branch, and fetch must never fire without auth
-    // (pinned in client.test.ts).
-    if (!this.config.token) throw new CredentialsError();
+  private async headers(contentType?: string): Promise<Record<string, string>> {
+    // The token is resolved here, per attempt, inside send() — a missing token
+    // raises AuthRequiredError before fetch, and send() rethrows it before the
+    // retry/backoff branch: it is a configuration problem, not transport
+    // trouble, and fetch must never fire without auth (pinned in client.test.ts).
     const h: Record<string, string> = {
-      Authorization: `OAuth ${this.config.token}`,
+      Authorization: `OAuth ${await this.tokens.getToken()}`,
     };
     if (contentType) h["Content-Type"] = contentType;
     return h;
@@ -178,7 +191,7 @@ export class AudienceClient {
     // Guard method !== "GET" keeps undici from crashing on a GET-with-body.
     const hasBody = body !== undefined && method !== "GET";
     return this.send<T>(method, this.resolveUrl(path, query), path, {
-      headers: this.headers(hasBody ? "application/json" : undefined),
+      makeHeaders: () => this.headers(hasBody ? "application/json" : undefined),
       makeBody: () => (hasBody ? JSON.stringify(body) : undefined),
       idempotent: method === "GET",
     });
@@ -190,7 +203,7 @@ export class AudienceClient {
    */
   async upload<T = unknown>(path: string, fileName: string, data: Uint8Array): Promise<T> {
     return this.send<T>("POST", this.resolveUrl(path), path, {
-      headers: this.headers(),
+      makeHeaders: () => this.headers(),
       makeBody: () => {
         const form = new FormData();
         // The cast narrows ArrayBufferLike to ArrayBuffer for BlobPart; segment
@@ -203,16 +216,25 @@ export class AudienceClient {
   }
 
   private async send<T>(method: HttpMethod, target: string, label: string, opts: SendOptions): Promise<T> {
+    // A stored token can be revoked (or die early) long before its stated expiry,
+    // and only the API knows: one silent re-mint + replay per request, then give up.
+    let refreshed = false;
+
     for (let attempt = 0; ; attempt++) {
       let res: Response;
       let text: string;
       try {
         ({ res, text } = await this.fetchWithTimeout(
           target,
-          { method, headers: opts.headers, body: opts.makeBody() },
+          { method, headers: await opts.makeHeaders(), body: opts.makeBody() },
           label,
         ));
       } catch (err) {
+        // "Not connected" is raised while building the auth header, inside this
+        // try — but it is not transport trouble: retrying burns seconds of
+        // backoff before the user sees the one message that would help them,
+        // and fetch must never fire without auth.
+        if (err instanceof AuthRequiredError) throw err;
         // Network error or timeout: retry idempotent requests with backoff; on the
         // last attempt (or a non-idempotent method) rethrow the original error.
         if (opts.idempotent && attempt < this.maxRetries) {
@@ -234,6 +256,27 @@ export class AudienceClient {
           data = JSON.parse(text);
         } catch {
           data = text;
+        }
+      }
+
+      // A dead token answers with 401, or 403 naming invalid_token. Re-mint once
+      // and replay — replaying with the same credentials is safe for any method,
+      // because the original request was rejected before the handler ran. The
+      // retry budget above is for transport trouble and must not be spent here.
+      if (!res.ok && !refreshed && isAuthFailure(res.status, data) && this.tokens.canRefresh()) {
+        refreshed = true;
+        try {
+          await this.tokens.refresh();
+          attempt--;
+          continue;
+        } catch (err) {
+          // Refresh itself failed (revoked in Yandex ID, network down): surface
+          // the actionable message instead of the original 401/403.
+          if (err instanceof AuthRequiredError) throw err;
+          throw new AuthRequiredError(
+            `Не удалось обновить токен Аудиторий: ${err instanceof Error ? err.message : String(err)}. ` +
+              "Вызовите start_login и подключитесь заново.",
+          );
         }
       }
 
@@ -379,4 +422,16 @@ function compact<T extends Record<string, unknown>>(obj: T): T {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * A dead token, as opposed to "this account may not see that segment": 401 is
+ * unambiguous, 403 only counts when the API names `invalid_token` — a plain 403
+ * is a permission problem that re-minting would not fix.
+ */
+function isAuthFailure(status: number, body: unknown): boolean {
+  if (status === 401) return true;
+  if (status !== 403) return false;
+  const errors = (body as { errors?: Array<{ error_type?: string }> } | undefined)?.errors;
+  return Array.isArray(errors) && errors.some((e) => e?.error_type === "invalid_token");
 }

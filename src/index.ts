@@ -2,10 +2,12 @@
 import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { TokenStore } from "./auth.js";
 import { AudienceClient } from "./client.js";
 import { ConfigError, DEFAULT_HOST, loadConfig } from "./config.js";
 import { instrumentToolCalls, Telemetry } from "./telemetry.js";
 import type { AudienceConfig } from "./types.js";
+import { registerAuthTools } from "./tools/auth.js";
 import { registerSegmentTools } from "./tools/segments.js";
 import { registerPixelTools } from "./tools/pixels.js";
 import { registerGrantTools } from "./tools/grants.js";
@@ -35,19 +37,17 @@ const INSTRUCTIONS =
   "сегменты. Любая запись идёт в реальный аккаунт: сверяйте id, отката у delete_segment нет.";
 
 /**
- * Prepended to INSTRUCTIONS when no token is configured. The model reads this
+ * Prepended to INSTRUCTIONS when no token is available. The model reads this
  * before it picks a tool, so an unconfigured session opens with the fix rather
- * than with a failed call. Unlike the Metrica sibling there is no in-chat
- * login: the token comes only from the environment, so the fix is the
- * operator's — set the variable and restart the server.
+ * than with a failed call.
  */
 const UNCONFIGURED_PREFIX =
-  "ВНИМАНИЕ: Яндекс Аудитории ещё не подключены — не задана переменная окружения " +
-  "YANDEX_AUDIENCE_TOKEN, поэтому любой вызов инструмента вернёт ошибку. Подключиться из " +
-  "диалога нельзя: оператор должен задать YANDEX_AUDIENCE_TOKEN (OAuth-токен Яндекса: " +
-  "приложение регистрируется на https://oauth.yandex.ru/client/new со скоупами чтения и " +
-  "изменения сегментов Аудиторий; для отладки подойдёт токен по инструкции " +
-  "https://yandex.ru/dev/id/doc/ru/tokens/debug-token) в конфигурации MCP-клиента и " +
+  "ВНИМАНИЕ: Яндекс Аудитории ещё не подключены — токена нет, поэтому любой инструмент данных " +
+  "вернёт ошибку. Подключение делается прямо в диалоге и без перезапуска клиента: вызовите " +
+  "start_login, покажите пользователю ссылку, попросите войти под аккаунтом Яндекса с доступом " +
+  "к нужным сегментам и прислать код подтверждения, затем передайте код в finish_login. " +
+  "Альтернатива без диалога — задать переменную окружения YANDEX_AUDIENCE_TOKEN (OAuth-токен " +
+  "со скоупами чтения и изменения сегментов Аудиторий) в конфигурации MCP-клиента и " +
   "перезапустить сервер. ";
 
 /** Reads the package version so the server reports its real version to MCP clients. */
@@ -93,12 +93,12 @@ async function main(): Promise<void> {
   // problem can be reported; wired to the server before tools register.
   const telemetry = new Telemetry(readVersion());
   const { config, problem } = loadConfigOrDegraded(telemetry);
-  const client = new AudienceClient(config);
+  const tokens = new TokenStore(config.token);
+  const client = new AudienceClient(config, tokens);
 
-  // Decided once, at startup: the token comes only from the environment, so an
-  // unconfigured start stays unconfigured until the operator sets the variable
-  // and restarts the server.
-  const connected = Boolean(config.token);
+  // Resolved once, at startup, only to pick the instructions text: the token
+  // itself is re-read per request, so a login mid-session still takes effect.
+  const connected = tokens.hasToken();
 
   // `instructions` rides in the server options (second argument) and surfaces as
   // the top-level `instructions` of the initialize result.
@@ -124,6 +124,7 @@ async function main(): Promise<void> {
     else telemetry.send("unconfigured_start", { reason: problem?.reason ?? "missing_token" });
   };
 
+  registerAuthTools(server, client, tokens);
   registerSegmentTools(server, client);
   registerPixelTools(server, client);
   registerGrantTools(server, client);
@@ -133,7 +134,7 @@ async function main(): Promise<void> {
   await server.connect(transport);
   console.error(
     `mcp-yandex-audience running on stdio${
-      connected ? "" : " (no YANDEX_AUDIENCE_TOKEN — set the variable and restart)"
+      connected ? "" : " (no token — connect via start_login or set YANDEX_AUDIENCE_TOKEN)"
     }`,
   );
 }
