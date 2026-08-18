@@ -17,11 +17,12 @@ type Handler = (args: Args) => Promise<{ content: { text: string }[]; isError?: 
  * whole point of these tools is what ends up on disk, so the store is not
  * faked. Global fetch is stubbed for the OAuth exchange (no network).
  */
-function harness(opts: { envToken?: string; segments?: unknown[] } = {}) {
+function harness(opts: { envToken?: string; segments?: unknown[]; listSegmentsError?: Error } = {}) {
   const clientCalls: unknown[] = [];
   const client = {
     listSegments: async (p: unknown) => {
       clientCalls.push(p);
+      if (opts.listSegmentsError) throw opts.listSegmentsError;
       return { segments: opts.segments ?? [{ id: 1 }] };
     },
   };
@@ -92,6 +93,8 @@ test("start_login returns a PKCE authorize URL for the Audience app, no network"
       assert.equal(url.searchParams.get("client_id"), DEFAULT_CLIENT_ID);
       assert.equal(url.searchParams.get("code_challenge_method"), "S256");
       assert.ok(url.searchParams.get("code_challenge"), "must carry a challenge");
+      // No redirect, no session to tie back — the URL carries no `state`.
+      assert.equal(url.searchParams.get("state"), null);
       assert.ok(!url.search.includes("client_secret"), "a public client must not leak a secret");
       assert.equal(fetched, 0);
     } finally {
@@ -159,6 +162,37 @@ test("finish_login warns when the connected account sees no segments", async () 
       const res = payload(await tools.finish_login({ code: "1234567" }));
       assert.equal(res.segmentsVisible, 0);
       assert.match(String(res.note), /другим аккаунтом/);
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  });
+});
+
+test("finish_login stays successful when the live check fails after the token is saved", async () => {
+  await isolated(async () => {
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ access_token: "minted", refresh_token: "rt", expires_in: 3600 }),
+      }) as unknown as Response) as typeof fetch;
+    try {
+      // The exchange succeeds and the token lands on disk, then the verification
+      // read dies on the network. That is a login that WORKED — reporting it as
+      // isError would send the user to redo it for nothing.
+      const { tools } = harness({ listSegmentsError: new Error("fetch failed: ECONNRESET") });
+      await tools.start_login({});
+      const res = await tools.finish_login({ code: "1234567" });
+
+      assert.notEqual(res.isError, true, "a failed check must not read as a failed login");
+      const body = payload(res);
+      assert.equal(body.connected, true);
+      assert.equal(body.verified, false);
+      assert.match(String(body.note), /сохранён/);
+      assert.match(String(body.note), /ECONNRESET/, "the note must carry the actual failure");
+      assert.equal(readCredentials()?.access_token, "minted", "the token really is on disk");
     } finally {
       globalThis.fetch = savedFetch;
     }
