@@ -6,7 +6,7 @@ import type {
   SegmentContentType,
   TimesQuantityOperation,
 } from "./types.js";
-import { AudienceError } from "./types.js";
+import { AudienceError, CredentialsError } from "./types.js";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -98,6 +98,12 @@ export class AudienceClient {
 
   /** OAuth header on every request; Content-Type only when we serialize JSON ourselves. */
   private headers(contentType?: string): Record<string, string> {
+    // Both request() and upload() build their headers before send() runs, so a
+    // missing token is rejected here — before the request is built, retried or
+    // sent. It is a configuration problem, not transport trouble: it must never
+    // enter the retry/backoff branch, and fetch must never fire without auth
+    // (pinned in client.test.ts).
+    if (!this.config.token) throw new CredentialsError();
     const h: Record<string, string> = {
       Authorization: `OAuth ${this.config.token}`,
     };

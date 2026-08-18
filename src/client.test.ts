@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AudienceClient } from "./client.js";
+import { CredentialsError, MISSING_TOKEN_MESSAGE } from "./types.js";
 import type { AudienceConfig } from "./types.js";
 
 const BASE = "https://api-audience.yandex.ru";
@@ -432,6 +433,68 @@ test("request() still accepts a relative API path (with an inline query string)"
     const result = await makeClient().request("GET", "v1/management/segments?limit=5");
     assert.deepEqual(result, { ok: true });
     assert.equal(mock.calls[0].url, `${BASE}/v1/management/segments?limit=5`);
+  } finally {
+    mock.restore();
+  }
+});
+
+// --- Missing credentials (degraded start) ---
+
+// The exact call-time message: the first sentence is the historical startup
+// error, verbatim, the rest is the fix. Pinned as a literal so a reworded
+// message does not silently change what the model tells the user.
+const EXPECTED_MISSING_TOKEN_MESSAGE =
+  "YANDEX_AUDIENCE_TOKEN is required (Yandex OAuth token; register an app at " +
+  "https://oauth.yandex.ru/client/new with the Yandex Audience segment read/write scopes). " +
+  "This is not a network failure and retrying will not help: the operator must set this " +
+  "environment variable in the MCP client's server config and restart the server — it is " +
+  "read only at startup.";
+
+/** Asserts the rejection is a CredentialsError carrying the pinned text verbatim. */
+function isCredentialsError(err: unknown): boolean {
+  assert.ok(err instanceof CredentialsError, "must be a CredentialsError");
+  assert.equal((err as Error).name, "CredentialsError");
+  assert.equal((err as Error).message, EXPECTED_MISSING_TOKEN_MESSAGE);
+  return true;
+}
+
+test("the exported missing-token message matches the pinned literal", () => {
+  assert.equal(MISSING_TOKEN_MESSAGE, EXPECTED_MISSING_TOKEN_MESSAGE);
+});
+
+test("request() without a token throws CredentialsError; fetch is never called", async () => {
+  const mock = mockFetch(() => new Response("{}", { status: 200 }));
+  try {
+    const client = new AudienceClient({ apiHost: BASE, maxRetries: 0 });
+    await assert.rejects(() => client.listSegments(), isCredentialsError);
+    // Not transport trouble: the retry/backoff branch — and fetch itself —
+    // must never run for a configuration problem.
+    assert.equal(mock.calls.length, 0, "fetch must not be called without credentials");
+  } finally {
+    mock.restore();
+  }
+});
+
+test("upload() without a token throws CredentialsError too; fetch is never called", async () => {
+  const mock = mockFetch(() => new Response("{}", { status: 200 }));
+  try {
+    const client = new AudienceClient({ apiHost: BASE, maxRetries: 0 });
+    await assert.rejects(
+      () => client.uploadSegmentFile("ids.tsv", new Uint8Array([1])),
+      isCredentialsError,
+    );
+    assert.equal(mock.calls.length, 0, "fetch must not be called without credentials");
+  } finally {
+    mock.restore();
+  }
+});
+
+test("an empty-string token counts as missing, not as an empty credential", async () => {
+  const mock = mockFetch(() => new Response("{}", { status: 200 }));
+  try {
+    const client = new AudienceClient({ token: "", apiHost: BASE, maxRetries: 0 });
+    await assert.rejects(() => client.listPixels(), isCredentialsError);
+    assert.equal(mock.calls.length, 0, "fetch must not be called without credentials");
   } finally {
     mock.restore();
   }

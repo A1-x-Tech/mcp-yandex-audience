@@ -108,3 +108,49 @@ test("dist server completes a real MCP handshake over stdio, lists every tool an
     await client.close();
   }
 });
+
+test("dist server without a token still answers initialize, tools/list and a call", async () => {
+  // The regression this exists for: with no YANDEX_AUDIENCE_TOKEN the server
+  // used to exit(1) before the MCP handshake, so the client showed a dead
+  // server and the user never learned why. It must now start, list its tools,
+  // open the instructions with the fix, and answer a tool call with the
+  // credentials error instead of dropping the connection. No network: the
+  // credentials check rejects the call before fetch.
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+
+  const env = { ...process.env, ASKADS_TELEMETRY: "0" };
+  delete env.YANDEX_AUDIENCE_TOKEN;
+
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [new URL("../dist/index.js", import.meta.url).pathname],
+    env,
+  });
+  const client = new Client({ name: "dist-smoke", version: "0.0.0" });
+  await client.connect(transport);
+  try {
+    const { tools } = await client.listTools();
+    assert.deepEqual(
+      tools.map((t) => t.name).sort(),
+      ALL_TOOLS,
+      "an unconfigured server must still list every tool",
+    );
+
+    const instructions = client.getInstructions() ?? "";
+    assert.match(instructions, /YANDEX_AUDIENCE_TOKEN/, "instructions must name the variable to set");
+    assert.match(instructions, /перезапустить сервер/, "and say the server needs a restart");
+
+    const result = await client.callTool({ name: "list_segments", arguments: {} });
+    assert.equal(result.isError, true, "the call must fail, not the connection");
+    const text = result.content.map((c) => c.text ?? "").join(" ");
+    assert.match(
+      text,
+      /YANDEX_AUDIENCE_TOKEN is required/,
+      "the error must carry the historical startup text",
+    );
+    assert.match(text, /restart the server/, "and the fix");
+  } finally {
+    await client.close();
+  }
+});

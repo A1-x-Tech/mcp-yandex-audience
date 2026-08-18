@@ -19,14 +19,19 @@ npm run smoke      # live READ-ONLY call (needs YANDEX_AUDIENCE_TOKEN)
 
 ## Architecture
 
-- `src/config.ts` — env → config; throws `ConfigError` (with a `reason` code) instead of
-  exiting, so `index.ts` can report the drop-off before dying.
-  Requires `YANDEX_AUDIENCE_TOKEN`; optional `YANDEX_AUDIENCE_API_HOST` (default
+- `src/config.ts` — env → config. A missing `YANDEX_AUDIENCE_TOKEN` is NOT an error: the
+  field stays `undefined`, the server starts degraded and the client raises
+  `CredentialsError` (types.ts) at call time. `ConfigError` (with a `reason` code) is
+  reserved for malformed values, caught by `loadConfigOrDegraded` in `index.ts` (no such
+  checks exist today). Optional `YANDEX_AUDIENCE_API_HOST` (default
   `https://api-audience.yandex.ru`), `YANDEX_AUDIENCE_TIMEOUT_MS`, `YANDEX_AUDIENCE_MAX_RETRIES`.
 - `src/client.ts` — one typed method per endpoint (`listSegments`, `confirmSegment`,
   `createLookalikeSegment`, `createPixel`, `addSegmentGrant`, …): OAuth header, path/query/body
   assembly (`{segment: …}` / `{pixel: …}` / `{grant: …}` envelopes, `compact()` drops undefined),
   `upload()` for multipart file uploads (no explicit Content-Type — fetch sets the boundary).
+  A missing token is rejected with `CredentialsError` while the auth header is built — before
+  the request, the retries and fetch; the message is the product: it preserves the historical
+  startup text and says to set the variable and restart.
   `request()` resolves the path against the base and rejects any path that escapes to a foreign
   origin (SSRF guard), enforces an AbortController timeout that also covers reading the body,
   and throws `AudienceError(status, body)` parsing the API's
@@ -42,15 +47,30 @@ npm run smoke      # live READ-ONLY call (needs YANDEX_AUDIENCE_TOKEN)
   `src/tools/raw.ts` — `raw_request` (GET/POST/PUT/DELETE, defaults to GET).
   `src/tools/util.ts` — `ok`/`fail`, the annotation constants
   (`READ_ONLY`/`WRITE`/`WRITE_IDEMPOTENT`/`DESTRUCTIVE`/`RAW`) and shared zod field factories.
-- `src/index.ts` — wires every `register*` into the McpServer.
+- `src/index.ts` — wires every `register*` into the McpServer. `loadConfigOrDegraded` starts
+  the server even on a config problem; without a token the initialize `instructions` open
+  with the unconfigured prefix (set `YANDEX_AUDIENCE_TOKEN` and restart).
 - `src/telemetry.ts` — anonymous usage pings (ids/names/versions only, never data or
   arguments; fire-and-forget, must never block or throw; opt-out `ASKADS_TELEMETRY=0`).
-  `startup_failed` is the exception: `sendBlocking` awaits it, because the caller
-  exits right after and a fire-and-forget ping would die in flight. Its `reason`
-  is a closed vocabulary (`missing_token`) — never a variable's name or value.
+  `server_start` means "a usable install started"; an install without a token sends
+  `unconfigured_start` instead. The `reason` is a closed vocabulary (`missing_token`) —
+  never a variable's name or value. `startup_failed` remains for a config unusable at
+  load time (malformed values; no such checks exist today), also fire-and-forget.
 
 ## Conventions (do not break)
 
+- **Never exit because of configuration.** A server that dies before the MCP handshake leaves
+  the user with a dead server and no reason — the sibling Metrica server's telemetry showed
+  that state accounted for nearly every unconfigured install. A missing token is a survivable
+  state: start, answer `initialize`/`tools/list` (with the unconfigured prefix in the
+  instructions), and reject tool calls with `CredentialsError`. There are no login tools:
+  the token comes only from the environment, so the fix is the operator setting
+  `YANDEX_AUDIENCE_TOKEN` and restarting the server. `config.test.ts`, `client.test.ts` and
+  `test/dist-smoke.test.js` pin this.
+- **Credential failures are not transport failures.** `CredentialsError` is thrown while the
+  auth header is built (in `headers()`, before `send()`'s retry/backoff loop and before
+  fetch) — retrying it burns seconds of backoff before the user sees the one message that
+  helps. Pinned by "fetch must not be called" assertions in `client.test.ts`.
 - **This is a write API — annotate deliberately.** Every tool carries one of the five
   annotation constants; `annotations.test.ts` pins the full tool → hints map. New GETs are
   `READ_ONLY`, POSTs/uploads `WRITE`, PUTs `WRITE_IDEMPOTENT`, DELETEs `DESTRUCTIVE`.
