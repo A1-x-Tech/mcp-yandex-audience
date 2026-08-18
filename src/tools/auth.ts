@@ -111,7 +111,27 @@ export function registerAuthTools(
         // Prove it works before telling the user it does: the live read both
         // validates the token against the API and shows whether this account
         // sees any segments at all.
-        const segments = await client.listSegments({ limit: 5 });
+        let segments: unknown;
+        try {
+          segments = await client.listSegments({ limit: 5 });
+        } catch (verifyError) {
+          // The login itself succeeded — the token is already on disk. A bare
+          // isError here would send the user to redo a login that does not need
+          // redoing, so the failed check is reported inside a successful answer.
+          const message =
+            verifyError instanceof Error ? verifyError.message : String(verifyError);
+          return ok({
+            connected: true,
+            verified: false,
+            storedAt: tokens.status().path,
+            grantedScope: response.scope,
+            note:
+              "Токен получен и сохранён, вход выполнен. " +
+              `Проверочный вызов к API не удался: ${message}. ` +
+              "Скорее всего, подключение работает — попробуйте любой инструмент данных; " +
+              "если ошибка повторится, это проблема доступа токена, а не входа.",
+          });
+        }
         const list = (segments as { segments?: unknown[] })?.segments;
         const found = Array.isArray(list) ? list.length : 0;
 

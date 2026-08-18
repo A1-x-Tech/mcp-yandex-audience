@@ -171,6 +171,9 @@ test("dist server without a token still answers initialize, tools/list and a cal
     const url = new URL(payload.authorizeUrl ?? "");
     assert.equal(url.origin + url.pathname, "https://oauth.yandex.ru/authorize");
     assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+    // No redirect in this flow, so the URL carries no `state` — PKCE alone binds
+    // the exchange to this process.
+    assert.equal(url.searchParams.get("state"), null);
     assert.ok(!url.search.includes("client_secret"), "a public client must not leak a secret");
   } finally {
     await client.close();
