@@ -1,8 +1,8 @@
 # <img src="./assets/a1-logo.svg" alt="A1" width="40"> Яндекс Аудитории MCP
 
 [![npm](https://img.shields.io/npm/v/mcp-yandex-audience)](https://www.npmjs.com/package/mcp-yandex-audience)
-[![CI](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml/badge.svg)](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml)
 [![Glama](https://glama.ai/mcp/servers/A1-x-Tech/mcp-yandex-audience/badges/score.svg)](https://glama.ai/mcp/servers/A1-x-Tech/mcp-yandex-audience)
+[![CI](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml/badge.svg)](https://github.com/A1-x-Tech/mcp-yandex-audience/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 **A1 Яндекс Аудитории MCP** подключает AI-приложение к сегментам, пикселям и доступам [Яндекс Аудиторий](https://audience.yandex.ru). Попросите на естественном языке показать, что уже есть в аккаунте, подготовить сегмент из CRM, собрать похожую аудиторию или выдать доступ коллегам — ассистент выполнит это через ваш аккаунт. Подключение начинается прямо в диалоге: не нужно заранее создавать токен или редактировать конфигурацию.
