@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "yandex-audience": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-yandex-audience@latest"
+      ]
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "mcp-yandex-audience",
+  "displayName": "A1 Яндекс Аудитории MCP",
+  "description": "MCP-сервер для Яндекс Аудиторий — создавать CRM- и LAL-сегменты, управлять пикселями и доступами из AI-приложения",
+  "author": {
+    "name": "Aleksandr Kovalko & Zinnur Temerbekov"
+  },
+  "homepage": "https://github.com/A1-x-Tech/mcp-yandex-audience#readme",
+  "repository": "https://github.com/A1-x-Tech/mcp-yandex-audience",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "yandex",
+    "yandex-audience",
+    "audience",
+    "segments",
+    "lookalike",
+    "retargeting",
+    "advertising"
+  ],
+  "logo": "assets/a1-logo.svg"
+}
