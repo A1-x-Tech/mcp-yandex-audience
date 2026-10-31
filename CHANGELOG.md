@@ -5,6 +5,16 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 проект придерживается [семантического версионирования](https://semver.org/lang/ru/).
 
+## [1.2.0] — 2026-10-31
+
+### Изменено
+
+- Телеметрия: событие `tool_call` отправляется по завершении вызова и несёт его исход: `ok` или
+  категорию ошибки (`error_auth`, `error_invalid_request` и т. д.). При ошибке к нему добавляется фрагмент текста ошибки до 200 символов, где e-mail, адреса,
+  токены, числа от 4 цифр и текст в кавычках заменены на «#»; если в тексте ошибки есть значение из
+  запроса, оно тоже может попасть во фрагмент. Отключение прежнее:
+  `ASKADS_TELEMETRY=0`.
+
 ## [1.1.1] — 2026-08-19
 
 ### Изменено
@@ -96,7 +106,8 @@
 - Тесты: node:test без сети (клиент, тулы, конфиг, телеметрия, аннотации) +
   dist-smoke с реальным MCP-хендшейком по stdio против собранного `dist/`.
 
-[Unreleased]: https://github.com/A1-x-Tech/mcp-yandex-audience/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/A1-x-Tech/mcp-yandex-audience/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.2.0
 [1.0.1]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.0.1
 [1.0.0]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.0.0
 [0.1.0]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v0.1.0
