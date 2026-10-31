@@ -5,6 +5,15 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 проект придерживается [семантического версионирования](https://semver.org/lang/ru/).
 
+## [1.2.1] — 2026-10-31
+
+### Исправлено
+
+- Телеметрия: если выжимка текста ошибки ничего не нашла, собственные классы ошибок сервера
+  (`AuthRequiredError`, `AbortError` …) передают имя класса, без сообщения; обычный `Error` и
+  системные ошибки не передают ничего. Ошибки Node с `code`, `errno` или `syscall` передают только тип
+  и код. Раньше такие отказы приходили без текста.
+
 ## [1.2.0] — 2026-10-31
 
 ### Изменено
@@ -107,6 +116,7 @@
   dist-smoke с реальным MCP-хендшейком по stdio против собранного `dist/`.
 
 [Unreleased]: https://github.com/A1-x-Tech/mcp-yandex-audience/compare/v1.2.0...HEAD
+[1.2.1]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.2.1
 [1.2.0]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.2.0
 [1.1.1]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.1.1
 [1.1.0]: https://github.com/A1-x-Tech/mcp-yandex-audience/releases/tag/v1.1.0
